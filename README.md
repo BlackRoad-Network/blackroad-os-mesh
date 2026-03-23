@@ -1,3 +1,11 @@
+# blackroad-os-mesh
+
+> BlackRoad Mesh — live WebSocket server for real-time agent communication across the fleet
+
+Part of the [BlackRoad OS](https://blackroad.io) ecosystem — [BlackRoad-OS-Inc](https://github.com/BlackRoad-OS-Inc)
+
+---
+
 <div align="center">
 
 <img src="https://images.blackroad.io/pixel-art/road-logo.png" alt="BlackRoad OS" width="80" />
