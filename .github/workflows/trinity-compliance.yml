@@ -157,7 +157,7 @@ jobs:
           echo "================================="
           if [ $ERRORS -eq 0 ]; then
             echo "✅ Trinity compliance check PASSED"
-            echo "🌈 All three lights present and functional"
+            echo "🌈 All three light directory structures present; runtime behavior is not tested here."
             exit 0
           else
             echo "❌ Trinity compliance check FAILED"
@@ -168,15 +168,20 @@ jobs:
             exit 1
           fi
 
-      - name: Run Trinity Tests
-        if: success()
+      - name: Validate Trinity Shell Scripts
         run: |
-          if [ -f ".trinity/system/trinity-record-test.sh" ]; then
-            echo "🧪 Running Trinity tests..."
-            bash .trinity/system/trinity-record-test.sh
-          else
-            echo "⚠️  No test script found, skipping tests"
+          # trinity-record-test.sh records supplied results in a local database;
+          # it is not a test runner. Validate the shipped scripts without executing
+          # their workstation/database side effects.
+          mapfile -d '' scripts < <(find .trinity -type f -name '*.sh' -print0)
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "::error::No Trinity shell scripts found"
+            exit 1
           fi
+          for script in "${scripts[@]}"; do
+            bash -n "$script"
+          done
+          echo "Validated syntax for ${#scripts[@]} Trinity shell scripts."
 
       - name: Generate Compliance Report
         if: always()

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "vitest"
+    "build": "tsc --noEmit false --outDir dist --module commonjs --moduleResolution node",
+    "pretest": "npm run build",
+    "test": "node --test test/*.test.cjs"
   },
   "dependencies": {
     "hono": "^4.12.5"
