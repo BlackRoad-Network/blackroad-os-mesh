@@ -4,9 +4,11 @@
   "description": "BlackRoad Mesh - Real-time agent coordination layer with WebSocket support",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --local --config wrangler.local.toml",
     "deploy": "wrangler deploy",
     "build": "tsc --noEmit false --outDir dist --module commonjs --moduleResolution node",
+    "build:worker": "wrangler deploy --dry-run --config wrangler.local.toml --outdir dist/worker",
+    "test:integration": "npm run build:worker && node --test integration/*.test.cjs",
     "pretest": "npm run build",
     "test": "node --test test/*.test.cjs"
   },
@@ -16,6 +18,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260911.1",
     "eslint": "^10.0.3",
+    "miniflare": "5.20260911.0-alpha",
     "prettier": "^3.7.4",
     "typescript": "^5.0.0",
     "wrangler": "^4.131.1"

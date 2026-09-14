@@ -33,7 +33,14 @@ test('broadcast persists the event under its returned identifier', async () => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Agent-ID': 'roadie-1' },
     body: JSON.stringify({ payload: { message: 'hello' } }),
-  }, { EVENTS: { put: async (...args) => writes.push(args) } });
+  }, { EVENTS: { put: async (...args) => writes.push(args) },
+    MESH: { idFromName: name => name, get: () => ({ fetch: async request => {
+      assert.equal(new URL(request.url).pathname, '/broadcast');
+      const message = await request.json();
+      assert.equal(message.from, 'roadie-1');
+      assert.deepEqual(message.payload, { message: 'hello' });
+      return Response.json({ success: true });
+    } }) } });
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(writes.length, 1);

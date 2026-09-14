@@ -2,6 +2,7 @@ const REQUIRED_CHECKS = [
   'build-and-test (22.x)', 'build-and-test (24.x)',
   'Mesh dependency audit', 'Mesh secret scan', 'Mesh CodeQL analysis',
   'Repository verification', 'check-compliance',
+  'Worker integration',
 ];
 
 function eligible(pr, repository) {

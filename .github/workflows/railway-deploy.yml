@@ -18,6 +18,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate Railway runtime entry point
+        run: |
+          node <<'JS'
+          const { scripts = {} } = require('./package.json');
+          if (!scripts.start) {
+            console.error('::error::No Node start command exists. This service uses Cloudflare Workers, Durable Objects and KV. Railway requires a compatible server adapter before deployment.');
+            process.exit(1);
+          }
+          JS
+
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 

@@ -20,10 +20,26 @@ runner. Failures return a nonzero status to CI.
 
 Six HTTP tests cover health, WebSocket upgrade rejection, broadcast validation and
 event persistence, global presence forwarding, and empty-room HTTP behavior.
-Storage and Durable Object bindings are test doubles. These tests do not verify
-deployed connectivity, real WebSocket upgrades, hibernation, or delivery of
-persisted broadcast events to WebSocket clients. The emitted test build is not
-evidence of a working production deployment.
+Storage and Durable Object bindings in these unit tests are test doubles. Two
+additional tests verify failed live forwarding returns HTTP 503 while preserving
+the stored event. The emitted test build is not evidence of production deployment.
+
+Run `npm run test:integration` for four tests in the actual local Worker engine.
+The command bundles the Worker with Wrangler's dry-run mode, then uses Miniflare
+with local KV and Durable Object bindings read from wrangler.local.toml. It tests
+HTTP health and KV persistence, WebSocket heartbeat/broadcast, named rooms and
+direct messages, and HTTP-to-WebSocket forwarding. Miniflare's version is pinned
+to the version already required by Wrangler; no additional runtime package was
+introduced. Local storage is ephemeral in this integration harness.
+
+For interactive use, `npm run dev` starts Wrangler on 127.0.0.1:8787 with local
+bindings. The sandbox used for this repair could run the direct Worker engine but
+could not start Wrangler's interactive server because host network-interface
+enumeration was unavailable. No host restriction was modified.
+
+These checks do not certify deployed connectivity, client authorization,
+hibernation recovery, long-term durability, or production capacity. Broadcast
+forwarding is not a guarantee that disconnected clients receive past messages.
 
 The Trinity workflow checks its directory structure and Bash syntax. Its
 `trinity-record-test.sh` helper records supplied results in a workstation SQLite
@@ -54,8 +70,14 @@ as not implemented in that workflow. It does not issue simulated approvals.
 At the start of this repair, Railway logs showed an empty `RAILWAY_TOKEN` and
 rejected deployment. No credential has been added or bypassed.
 
-The existing Wrangler configuration points at `src/index.js`, while the tracked
-entry point is `src/index.ts`, and does not declare the bindings required by the
-service. Production deployment needs a separate verified configuration change.
+Railway and the existing Dockerfile also call `npm start`, which does not exist.
+The Railway workflow now fails with that specific runtime mismatch before trying
+to deploy. A compatible Node adapter or a verified Worker deployment target is
+required; adding a token alone does not fix this mismatch.
+
+The production Wrangler entry point now correctly names src/index.ts. Its real
+account/resource bindings and migrations still need verification. The separate
+local configuration declares all required local bindings without remote IDs and
+must not be used as a production deployment configuration.
 
 Remember the Road. Pave Tomorrow.

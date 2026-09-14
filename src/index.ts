@@ -131,6 +131,15 @@ export class MeshRoom {
     }
 
     // Handle HTTP requests
+    if (url.pathname === '/broadcast' && request.method === 'POST') {
+      const message = await request.json<MeshMessage>();
+      if (message.type !== 'broadcast' || typeof message.from !== 'string') {
+        return new Response('Invalid broadcast', { status: 400 });
+      }
+      this.broadcast(message);
+      return Response.json({ success: true });
+    }
+
     if (url.pathname === '/presence') {
       return Response.json({
         room: 'global',
@@ -307,11 +316,12 @@ app.get('/', (c) => {
     description: 'Real-time agent coordination layer',
     philosophy: {
       principles: [
-        'The mesh is always watching',
-        'Every connection is remembered',
-        'Presence is participation'
+        'We access it all at RoadOS.',
+        'We collaborate with Roadies.',
+        'We code in Road.'
       ],
-      message: 'The mesh binds all who enter.'
+      message: 'Integration is Innovation.',
+      tagline: 'Remember the Road. Pave Tomorrow.'
     },
     endpoints: {
       websocket: '/ws?agent={agentId}&name={agentName}',
@@ -414,10 +424,26 @@ app.post('/broadcast', async (c) => {
 
   await c.env.EVENTS.put(`event:${eventId}`, JSON.stringify(fullEvent));
 
+  const id = c.env.MESH.idFromName('global');
+  const mesh = c.env.MESH.get(id);
+  try {
+    const forwarded = await mesh.fetch(new Request('https://mesh/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'broadcast', from: agentId, payload: event.data, timestamp: event.timestamp
+      })
+    }));
+    if (!forwarded.ok) throw new Error('Mesh rejected broadcast');
+  } catch {
+    return c.json({ success: false, event: fullEvent,
+      error: 'Event stored, but live broadcast failed.' }, 503);
+  }
+
   return c.json({
     success: true,
     event: fullEvent,
-    message: 'Broadcast queued (WebSocket clients will receive in real-time)'
+    message: 'Event stored and broadcast forwarded to connected WebSocket clients.'
   });
 });
 
@@ -445,8 +471,8 @@ app.get('/room/:roomId/presence', async (c) => {
   const data = await response.json();
 
   return c.json({
-    room: roomId,
-    ...(data as object)
+    ...(data as object),
+    room: roomId
   });
 });
 

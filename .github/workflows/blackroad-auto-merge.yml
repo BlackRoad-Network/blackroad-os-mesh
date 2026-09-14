@@ -7,7 +7,7 @@ on:
   check_suite:
     types: [completed]
   workflow_run:
-    workflows: ["Security", "Node.js Build and Deploy", "🌌 Master BlackRoad Workflow", "Trinity Compliance Check"]
+    workflows: ["Security", "Node.js Build and Deploy", "🌌 Master BlackRoad Workflow", "Trinity Compliance Check", "Local Worker Runtime"]
     types: [completed]
 
 permissions:
