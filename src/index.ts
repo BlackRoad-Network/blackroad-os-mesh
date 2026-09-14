@@ -72,17 +72,44 @@ function generateId(): string {
 // DURABLE OBJECT: MeshRoom
 // Handles WebSocket connections for a mesh room
 // ============================================
+interface MeshSession {
+  version: 1;
+  agentId: string;
+  name: string;
+  joinedAt: string;
+  lastSeen: number;
+}
+
+function isMeshSession(value: unknown): value is MeshSession {
+  if (!value || typeof value !== 'object') return false;
+  const session = value as Partial<MeshSession>;
+  return session.version === 1 && typeof session.agentId === 'string' &&
+    session.agentId.length > 0 && session.agentId.length <= 128 &&
+    typeof session.name === 'string' && session.name.length <= 256 &&
+    typeof session.joinedAt === 'string' && Number.isFinite(Date.parse(session.joinedAt)) &&
+    typeof session.lastSeen === 'number' && Number.isFinite(session.lastSeen) && session.lastSeen >= 0;
+}
+
 export class MeshRoom {
   state: DurableObjectState;
   env: Env;
-  sessions: Map<WebSocket, { agentId: string; name: string; joinedAt: string }>;
-  lastHeartbeats: Map<string, number>;
+  sessions: Map<WebSocket, MeshSession>;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
     this.sessions = new Map();
-    this.lastHeartbeats = new Map();
+    // Hibernation preserves sockets, but resets the object and its in-memory maps.
+    for (const socket of state.getWebSockets()) {
+      let attachment: unknown;
+      try { attachment = socket.deserializeAttachment(); } catch { attachment = null; }
+      if (isMeshSession(attachment)) {
+        this.sessions.set(socket, attachment);
+      } else {
+        // Old or invalid sessions have no reliable identity to recover.
+        socket.close(1012, 'Session unavailable; reconnect');
+      }
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -96,19 +123,24 @@ export class MeshRoom {
       if (!agentId) {
         return new Response('Agent ID required', { status: 400 });
       }
+      // Keep the identity attachment within the runtime's per-socket size limit.
+      if (agentId.length > 128 || agentName.length > 256) {
+        return new Response('Agent ID or name too long', { status: 400 });
+      }
 
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
 
-      this.state.acceptWebSocket(server);
-
-      this.sessions.set(server, {
+      const session: MeshSession = {
+        version: 1,
         agentId,
         name: agentName,
-        joinedAt: new Date().toISOString()
-      });
-
-      this.lastHeartbeats.set(agentId, Date.now());
+        joinedAt: new Date().toISOString(),
+        lastSeen: Date.now()
+      };
+      server.serializeAttachment(session);
+      this.state.acceptWebSocket(server);
+      this.sessions.set(server, session);
 
       // Broadcast join event
       this.broadcast({
@@ -131,6 +163,15 @@ export class MeshRoom {
     }
 
     // Handle HTTP requests
+    if (url.pathname === '/broadcast' && request.method === 'POST') {
+      const message = await request.json<MeshMessage>();
+      if (message.type !== 'broadcast' || typeof message.from !== 'string') {
+        return new Response('Invalid broadcast', { status: 400 });
+      }
+      this.broadcast(message);
+      return Response.json({ success: true });
+    }
+
     if (url.pathname === '/presence') {
       return Response.json({
         room: 'global',
@@ -154,12 +195,15 @@ export class MeshRoom {
 
   webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
     try {
-      const data = JSON.parse(message.toString()) as MeshMessage;
+      const text = typeof message === 'string' ? message : new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(message);
+      const data = JSON.parse(text) as MeshMessage;
+      if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
       const session = this.sessions.get(ws);
 
       if (!session) return;
 
-      this.lastHeartbeats.set(session.agentId, Date.now());
+      session.lastSeen = Date.now();
+      ws.serializeAttachment(session);
 
       switch (data.type) {
         case 'heartbeat':
@@ -231,33 +275,38 @@ export class MeshRoom {
           break;
       }
     } catch (e) {
-      console.error('WebSocket message error:', e);
+      console.error('Unable to process WebSocket message');
     }
   }
 
   webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): void {
     const session = this.sessions.get(ws);
-    if (session) {
+    this.sessions.delete(ws);
+    const stillConnected = session && [...this.sessions.values()].some(s => s.agentId === session.agentId);
+    if (session && !stillConnected) {
       this.broadcast({
         type: 'leave',
         from: session.agentId,
         payload: { name: session.name, code, reason },
         timestamp: new Date().toISOString()
       });
-      this.sessions.delete(ws);
-      this.lastHeartbeats.delete(session.agentId);
+    }
+    // Acknowledge the close on the retained compatibility date. Never send
+    // reserved received-only close codes back over the wire.
+    if (ws.readyState !== WebSocket.CLOSED) {
+      ws.close(code === 1005 ? 1000 : code === 1006 ? 1011 : code, reason);
     }
   }
 
   webSocketError(ws: WebSocket, error: unknown): void {
     console.error('WebSocket error:', error);
-    this.webSocketClose(ws, 1006, 'Error', false);
+    this.webSocketClose(ws, 1011, 'Error', false);
   }
 
   private broadcast(message: MeshMessage, exclude?: WebSocket): void {
     const payload = JSON.stringify(message);
     for (const ws of this.sessions.keys()) {
-      if (ws !== exclude && ws.readyState === WebSocket.READY_STATE_OPEN) {
+      if (ws !== exclude && ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(payload);
         } catch (e) {
@@ -270,7 +319,7 @@ export class MeshRoom {
   private sendToAgent(agentId: string, message: MeshMessage): void {
     const payload = JSON.stringify(message);
     for (const [ws, session] of this.sessions.entries()) {
-      if (session.agentId === agentId && ws.readyState === WebSocket.READY_STATE_OPEN) {
+      if (session.agentId === agentId && ws.readyState === WebSocket.OPEN) {
         ws.send(payload);
         break;
       }
@@ -282,7 +331,7 @@ export class MeshRoom {
       agentId: session.agentId,
       name: session.name,
       joinedAt: session.joinedAt,
-      lastSeen: this.lastHeartbeats.get(session.agentId) || Date.now()
+      lastSeen: session.lastSeen
     }));
   }
 }
@@ -307,11 +356,12 @@ app.get('/', (c) => {
     description: 'Real-time agent coordination layer',
     philosophy: {
       principles: [
-        'The mesh is always watching',
-        'Every connection is remembered',
-        'Presence is participation'
+        'We access it all at RoadOS.',
+        'We collaborate with Roadies.',
+        'We code in Road.'
       ],
-      message: 'The mesh binds all who enter.'
+      message: 'Integration is Innovation.',
+      tagline: 'Remember the Road. Pave Tomorrow.'
     },
     endpoints: {
       websocket: '/ws?agent={agentId}&name={agentName}',
@@ -414,10 +464,26 @@ app.post('/broadcast', async (c) => {
 
   await c.env.EVENTS.put(`event:${eventId}`, JSON.stringify(fullEvent));
 
+  const id = c.env.MESH.idFromName('global');
+  const mesh = c.env.MESH.get(id);
+  try {
+    const forwarded = await mesh.fetch(new Request('https://mesh/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'broadcast', from: agentId, payload: event.data, timestamp: event.timestamp
+      })
+    }));
+    if (!forwarded.ok) throw new Error('Mesh rejected broadcast');
+  } catch {
+    return c.json({ success: false, event: fullEvent,
+      error: 'Event stored, but live broadcast failed.' }, 503);
+  }
+
   return c.json({
     success: true,
     event: fullEvent,
-    message: 'Broadcast queued (WebSocket clients will receive in real-time)'
+    message: 'Event stored and broadcast forwarded to connected WebSocket clients.'
   });
 });
 
@@ -445,8 +511,8 @@ app.get('/room/:roomId/presence', async (c) => {
   const data = await response.json();
 
   return c.json({
-    room: roomId,
-    ...(data as object)
+    ...(data as object),
+    room: roomId
   });
 });
 

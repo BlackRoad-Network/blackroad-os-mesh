@@ -21,7 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['javascript', 'typescript', 'python']
+        # CodeQL's JavaScript extractor also covers TypeScript. No Python source is tracked.
+        language: ['javascript']
     
     steps:
       - name: Checkout

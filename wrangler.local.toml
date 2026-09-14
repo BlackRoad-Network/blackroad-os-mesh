@@ -1,0 +1,29 @@
+# Local development only. No account, remote namespace IDs, or remote bindings.
+name = "blackroad-mesh-local"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+send_metrics = false
+
+[dev]
+ip = "127.0.0.1"
+port = 8787
+
+[[durable_objects.bindings]]
+name = "MESH"
+class_name = "MeshRoom"
+
+[[migrations]]
+tag = "local-v1"
+new_sqlite_classes = ["MeshRoom"]
+
+[[kv_namespaces]]
+binding = "AGENTS"
+remote = false
+
+[[kv_namespaces]]
+binding = "LEDGER"
+remote = false
+
+[[kv_namespaces]]
+binding = "EVENTS"
+remote = false
