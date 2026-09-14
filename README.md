@@ -1,5 +1,19 @@
 # blackroad-os-mesh
 
+<!-- BLACKROAD:CANON:START -->
+## The Road. Pave Tomorrow.
+
+**We access it all at RoadOS.**  
+**We collaborate with Roadies.**  
+**We code in Road.**
+
+*Integration is Innovation.*
+
+Pick up your Roadies. Discover the BlackRoad together.
+
+[Product names, brand language, and implementation boundaries](BLACKROAD_CANON.md)
+<!-- BLACKROAD:CANON:END -->
+
 > BlackRoad Mesh — live WebSocket server for real-time agent communication across the fleet
 
 Part of the [BlackRoad OS](https://blackroad.io) ecosystem — [BlackRoad-OS-Inc](https://github.com/BlackRoad-OS-Inc)
@@ -14,7 +28,6 @@ Part of the [BlackRoad OS](https://blackroad.io) ecosystem — [BlackRoad-OS-Inc
 
 **Live Mesh WebSocket server for real-time agent communication**
 
-[![BlackRoad OS](https://img.shields.io/badge/BlackRoad_OS-Pave_Tomorrow-FF2255?style=for-the-badge&labelColor=000000)](https://blackroad.io)
 [![License](https://img.shields.io/badge/License-Proprietary-FF6B2B?style=for-the-badge&labelColor=000000)](./LICENSE)
 [![Edge AI](https://img.shields.io/badge/Edge_AI-52_TOPS-00D4FF?style=for-the-badge&labelColor=000000)](https://github.com/BlackRoad-OS-Inc)
 
