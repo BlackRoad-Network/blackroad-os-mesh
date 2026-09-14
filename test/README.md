@@ -24,11 +24,13 @@ Storage and Durable Object bindings in these unit tests are test doubles. Two
 additional tests verify failed live forwarding returns HTTP 503 while preserving
 the stored event. The emitted test build is not evidence of production deployment.
 
-Run `npm run test:integration` for four tests in the actual local Worker engine.
+Run `npm run test:integration` for seven tests in the actual local Worker engine.
 The command bundles the Worker with Wrangler's dry-run mode, then uses Miniflare
 with local KV and Durable Object bindings read from wrangler.local.toml. It tests
 HTTP health and KV persistence, WebSocket heartbeat/broadcast, named rooms and
-direct messages, and HTTP-to-WebSocket forwarding. Miniflare's version is pinned
+direct messages, HTTP-to-WebSocket forwarding, two forced hibernation/recovery
+cycles, binary UTF-8 JSON messages, and disconnects with multiple sessions for
+the same Roadie. Miniflare's version is pinned
 to the version already required by Wrangler; no additional runtime package was
 introduced. Local storage is ephemeral in this integration harness.
 
@@ -37,8 +39,18 @@ bindings. The sandbox used for this repair could run the direct Worker engine bu
 could not start Wrangler's interactive server because host network-interface
 enumeration was unavailable. No host restriction was modified.
 
+Six session unit tests additionally cover timestamp restoration, heartbeat
+attachment persistence, missing/corrupt/unreadable attachments, remaining-peer
+activity, and close-code normalization. There are 34 unit/policy tests overall.
+
+New connections store versioned identity and last-seen data as WebSocket
+attachments so the object can reconstruct its sessions after hibernation. Older
+connections without attachments, or connections with invalid attachment data,
+receive close code 1012 and must reconnect. Agent IDs are limited to 128 UTF-16
+code units and names to 256 to keep attachments within runtime limits.
+
 These checks do not certify deployed connectivity, client authorization,
-hibernation recovery, long-term durability, or production capacity. Broadcast
+production hibernation behavior, long-term durability, or production capacity. Broadcast
 forwarding is not a guarantee that disconnected clients receive past messages.
 
 The Trinity workflow checks its directory structure and Bash syntax. Its

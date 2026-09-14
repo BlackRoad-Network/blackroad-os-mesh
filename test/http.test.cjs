@@ -69,7 +69,7 @@ test('presence forwards to the global Durable Object', async () => {
 });
 
 test('empty mesh room reports zero presence and rejects unknown routes', async () => {
-  const room = new MeshRoom({ id: { toString: () => 'room-id' } }, {});
+  const room = new MeshRoom({ id: { toString: () => 'room-id' }, getWebSockets: () => [] }, {});
   const presence = await room.fetch(new Request('https://mesh/presence'));
   const body = await presence.json();
   assert.deepEqual(body.agents, []);

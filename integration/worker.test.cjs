@@ -9,7 +9,7 @@ before(async () => {
   assert.equal(config.account_id, undefined);
   assert.ok(config.kv_namespaces.every(binding => binding.remote === false && !binding.id));
   mf = new Miniflare(convertV4MiniflareOptions({
-    host: '127.0.0.1', port: 0, modules: true, scriptPath: 'dist/worker/index.js',
+    name: config.name, host: '127.0.0.1', port: 0, modules: true, scriptPath: 'dist/worker/index.js',
     compatibilityDate: config.compatibility_date,
     durableObjects: Object.fromEntries(config.durable_objects.bindings.map(binding =>
       [binding.name, { className: binding.class_name, useSQLite: true }])),
@@ -18,6 +18,68 @@ before(async () => {
   await mf.ready;
 });
 after(async () => { await mf?.dispose(); });
+
+test('sessions and message routing survive repeated Worker hibernation', async () => {
+  const a = await connect('/room/recovery/ws?agent=recover-a&name=Alpha');
+  const b = await connect('/room/recovery/ws?agent=recover-b&name=Beta');
+  try {
+    await a.receive(m => m.type === 'presence');
+    await b.receive(m => m.type === 'presence');
+    const before = await (await mf.dispatchFetch('http://mesh/room/recovery/presence')).json();
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await mf.unsafeEvictDurableObject('blackroad-mesh-local', 'MeshRoom', { name: 'recovery', webSockets: 'hibernate' });
+      const after = await (await mf.dispatchFetch('http://mesh/room/recovery/presence')).json();
+      assert.equal(after.count, 2);
+      assert.deepEqual(after.agents.map(a => [a.agentId, a.name, a.joinedAt]).sort(),
+        before.agents.map(a => [a.agentId, a.name, a.joinedAt]).sort());
+      a.socket.send(JSON.stringify({ type: 'direct', to: 'recover-b', payload: cycle }));
+      assert.equal((await b.receive(m => m.type === 'direct' && m.payload === cycle)).from, 'recover-a');
+      a.socket.send(JSON.stringify({ type: 'heartbeat' }));
+      assert.equal((await a.receive(m => m.type === 'heartbeat')).payload.received, true);
+    }
+  } finally { a.socket.close(); b.socket.close(); }
+});
+
+test('binary UTF-8 JSON WebSocket messages are decoded', async () => {
+  const client = await connect('/room/binary/ws?agent=binary-roadie');
+  try {
+    await client.receive(m => m.type === 'presence');
+    client.socket.send(new TextEncoder().encode(JSON.stringify({ type: 'heartbeat' })));
+    assert.equal((await client.receive(m => m.type === 'heartbeat')).payload.received, true);
+  } finally { client.socket.close(); }
+});
+
+test('closing one of two sessions does not announce an agent departure', async () => {
+  const first = await connect('/room/disconnect/ws?agent=shared');
+  const second = await connect('/room/disconnect/ws?agent=shared');
+  const observer = await connect('/room/disconnect/ws?agent=observer');
+  const departures = [];
+  observer.socket.addEventListener('message', event => {
+    const message = JSON.parse(event.data);
+    if (message.type === 'leave' && message.from === 'shared') departures.push(message);
+  });
+  try {
+    await observer.receive(m => m.type === 'presence');
+    first.socket.close(1000, 'first closed');
+    let presence;
+    for (let i = 0; i < 100; i++) {
+      presence = await (await mf.dispatchFetch('http://mesh/room/disconnect/presence')).json();
+      if (presence.count === 2) break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(presence.count, 2);
+    assert.equal(departures.length, 0);
+    second.socket.send(JSON.stringify({ type: 'heartbeat' }));
+    await second.receive(m => m.type === 'heartbeat');
+    second.socket.close(1000, 'last closed');
+    await observer.receive(m => m.type === 'leave' && m.from === 'shared');
+    assert.equal(departures.length, 1);
+  } finally {
+    for (const client of [first, second, observer]) {
+      if (client.socket.readyState === 1) client.socket.close();
+    }
+  }
+});
 
 async function connect(path) {
   const response = await mf.dispatchFetch(`http://mesh${path}`, { headers: { Upgrade: 'websocket' } });
